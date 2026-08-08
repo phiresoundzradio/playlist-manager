@@ -5239,8 +5239,10 @@ function _preprocessForOCR(imgEl) {
 // ── OCR for setlist / screenshot ──────────────────────────────────────────────
 async function runImageOCR(mode) {
   // Un-hide result wrapper if cleared
-  const _wrap = document.getElementById('img-text-results');
-  if (_wrap) _wrap.style.display = '';
+  ['img-text-result','img-ocr-result'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.style.display = '';
+  });
 
   const img = document.getElementById(`img-preview-img-${mode}`);
   if (!img.src) return;
@@ -5424,6 +5426,11 @@ function renderImgTextResults(rawText) {
     var el = document.getElementById(id);
     if (el) { el.style.display = ''; delete el._clearedByReset; }
   });
+  // Un-hide result wrapper in case it was cleared
+  ['img-text-result','img-ocr-result'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) { el.style.display = ''; delete el._clearedByReset; }
+  });
   // ── Apply OCR filter ──────────────────────────────────────────────────────
   const _ocrFiltered  = _filterOCRLines(rawText);
   const _filteredText = _ocrFiltered.lines.join('\n');
@@ -5447,7 +5454,6 @@ function renderImgTextResults(rawText) {
   const detectedArtist = _detectArtistFromOCR(rawText);
 
   const wrap = document.getElementById('img-text-results');
-  if (wrap) wrap.style.display = '';  // always show on scan
   document.getElementById('img-text-result-count').textContent =
     `${lines.length} lines found — verifying with iTunes…`;
   // Show filter summary
@@ -5506,16 +5512,14 @@ function clearImageScan() {
   if (ta) ta.value = '';
 
   // Remove suggestion/filter panels
-  ['verify-corrections-summary', 'ocr-filter-badge'].forEach(id => {
+  ['verify-corrections-summary','ocr-filter-badge'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.remove();
   });
 
-  // Reset result count + track list
+  // Reset result count
   const cnt = document.getElementById('img-text-result-count');
   if (cnt) cnt.textContent = '';
-  const list = document.getElementById('img-text-result-list');
-  if (list) list.innerHTML = '';
 
   // Reset verify status + button
   const status = document.getElementById('itunes-verify-status');
@@ -5523,9 +5527,11 @@ function clearImageScan() {
   const btn = document.getElementById('itunes-verify-btn');
   if (btn) { btn.disabled = false; btn.textContent = 'Verify via iTunes'; }
 
-  // Hide the result wrapper (CORRECT ID: img-text-results)
-  const wrap = document.getElementById('img-text-results');
-  if (wrap) wrap.style.display = 'none';
+  // Hide result wrapper — runImageOCR + renderImgTextResults will un-hide it on next scan
+  ['img-text-result','img-ocr-result'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; el._clearedByReset = true; }
+  });
 
   // Clear artist hint
   const hint = document.getElementById('img-artist-hint');
