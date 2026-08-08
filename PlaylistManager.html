@@ -5426,6 +5426,11 @@ function renderImgTextResults(rawText) {
     var el = document.getElementById(id);
     if (el) { el.style.display = ''; delete el._clearedByReset; }
   });
+  // Un-hide result wrapper in case it was cleared
+  ['img-text-result','img-ocr-result'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) { el.style.display = ''; delete el._clearedByReset; }
+  });
   // ── Apply OCR filter ──────────────────────────────────────────────────────
   const _ocrFiltered  = _filterOCRLines(rawText);
   const _filteredText = _ocrFiltered.lines.join('\n');

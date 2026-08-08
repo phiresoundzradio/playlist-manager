@@ -5238,6 +5238,12 @@ function _preprocessForOCR(imgEl) {
 
 // ── OCR for setlist / screenshot ──────────────────────────────────────────────
 async function runImageOCR(mode) {
+  // Un-hide result wrapper if cleared
+  ['img-text-result','img-ocr-result'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.style.display = '';
+  });
+
   const img = document.getElementById(`img-preview-img-${mode}`);
   if (!img.src) return;
 
@@ -5415,6 +5421,11 @@ function _filterOCRLines(rawText) {
 }
 
 function renderImgTextResults(rawText) {
+  // Un-hide result wrapper in case it was cleared
+  ['img-text-result','img-ocr-result'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) { el.style.display = ''; delete el._clearedByReset; }
+  });
   // ── Apply OCR filter ──────────────────────────────────────────────────────
   const _ocrFiltered  = _filterOCRLines(rawText);
   const _filteredText = _ocrFiltered.lines.join('\n');
@@ -5486,48 +5497,42 @@ function renderImgTextResults(rawText) {
 
 // ── Clear image scan and reset to start fresh ────────────────────────────────
 function clearImageScan() {
-  // Reset state
+  // Reset JS state
   _verifyResults = [];
+  _imgTextTracks = [];
+  if (typeof _imgAlbumTracks !== 'undefined') _imgAlbumTracks = [];
 
   // Clear textarea
   const ta = document.getElementById('img-ocr-edit');
   if (ta) ta.value = '';
 
-  // Remove suggestion panel
-  const summary = document.getElementById('verify-corrections-summary');
-  if (summary) summary.remove();
-
-  // Remove filter badge
-  const badge = document.getElementById('ocr-filter-badge');
-  if (badge) badge.remove();
+  // Remove suggestion/filter panels
+  ['verify-corrections-summary','ocr-filter-badge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  });
 
   // Reset result count
   const cnt = document.getElementById('img-text-result-count');
   if (cnt) cnt.textContent = '';
 
-  // Reset verify status
+  // Reset verify status + button
   const status = document.getElementById('itunes-verify-status');
   if (status) { status.textContent = ''; status.style.display = 'none'; }
-
-  // Reset verify button
   const btn = document.getElementById('itunes-verify-btn');
   if (btn) { btn.disabled = false; btn.textContent = 'Verify via iTunes'; }
 
-  // Clear file input so same image can be re-selected
-  const fileIn = document.getElementById('img-upload-input') ||
-                 document.querySelector('input[type="file"][accept*="image"]');
-  if (fileIn) fileIn.value = '';
-
-  // Hide OCR result section if it has a wrapper
-  const resultWrap = document.getElementById('img-text-result') ||
-                     document.getElementById('img-ocr-result');
-  if (resultWrap) resultWrap.style.display = 'none';
+  // Hide result wrapper — runImageOCR + renderImgTextResults will un-hide it on next scan
+  ['img-text-result','img-ocr-result'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.display = 'none'; el._clearedByReset = true; }
+  });
 
   // Clear artist hint
   const hint = document.getElementById('img-artist-hint');
   if (hint) hint.value = '';
 
-  toast('Cleared — ready to scan a new image', 'success');
+  toast('Cleared — drop a new image or click Scan', 'success');
 }
 
 async function verifyOCRLines() {
