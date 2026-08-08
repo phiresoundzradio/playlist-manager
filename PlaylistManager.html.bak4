@@ -1574,7 +1574,6 @@ Prince" oninput="previewParse()"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
           <button class="btn btn-primary" onclick="confirmImageImport('text')">Import All</button>
           <button class="btn btn-secondary" id="itunes-verify-btn" onclick="verifyOCRLines()">🔍 Verify Song Names</button>
-<button onclick="clearImageScan()" title="Clear scan and start over" style="margin-left:8px;background:none;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit;transition:all .15s;" onmouseover="this.style.borderColor='var(--text)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✕ Clear</button>
           <button class="btn btn-secondary" onclick="clearImgPreview('text')">Try Another</button>
         </div>
         <div id="itunes-verify-status" style="display:none;font-size:11px;color:var(--muted);margin-top:6px;"></div>
@@ -5483,53 +5482,6 @@ function renderImgTextResults(rawText) {
 }
 
 // ── iTunes verification for OCR'd song lines ──────────────────────────────────
-
-// ── Clear image scan and reset to start fresh ────────────────────────────────
-function clearImageScan() {
-  // Reset state
-  _verifyResults = [];
-
-  // Clear textarea
-  const ta = document.getElementById('img-ocr-edit');
-  if (ta) ta.value = '';
-
-  // Remove suggestion panel
-  const summary = document.getElementById('verify-corrections-summary');
-  if (summary) summary.remove();
-
-  // Remove filter badge
-  const badge = document.getElementById('ocr-filter-badge');
-  if (badge) badge.remove();
-
-  // Reset result count
-  const cnt = document.getElementById('img-text-result-count');
-  if (cnt) cnt.textContent = '';
-
-  // Reset verify status
-  const status = document.getElementById('itunes-verify-status');
-  if (status) { status.textContent = ''; status.style.display = 'none'; }
-
-  // Reset verify button
-  const btn = document.getElementById('itunes-verify-btn');
-  if (btn) { btn.disabled = false; btn.textContent = 'Verify via iTunes'; }
-
-  // Clear file input so same image can be re-selected
-  const fileIn = document.getElementById('img-upload-input') ||
-                 document.querySelector('input[type="file"][accept*="image"]');
-  if (fileIn) fileIn.value = '';
-
-  // Hide OCR result section if it has a wrapper
-  const resultWrap = document.getElementById('img-text-result') ||
-                     document.getElementById('img-ocr-result');
-  if (resultWrap) resultWrap.style.display = 'none';
-
-  // Clear artist hint
-  const hint = document.getElementById('img-artist-hint');
-  if (hint) hint.value = '';
-
-  toast('Cleared — ready to scan a new image', 'success');
-}
-
 async function verifyOCRLines() {
   const ta = document.getElementById('img-ocr-edit');
   if (!ta) return;
@@ -5605,17 +5557,6 @@ async function _itunesLookupWithCandidates(query, artistHint = '') {
     }
 
     // ── Multi-strategy search ─────────────────────────────────────────────
-    // If a global artist hint is set but OCR line has its own artist,
-    // prefer the OCR-parsed artist but also try the hint as fallback
-    const globalHint = artistHint.trim();
-    if (globalHint && !parsedArtist) {
-      parsedArtist = globalHint;
-    } else if (globalHint && parsedArtist &&
-               _strSim(_normStr(globalHint), _normStr(parsedArtist)) < 0.4) {
-      // OCR artist and hint are different — could be a feature ("ft. Artist")
-      // Keep OCR artist as primary, note hint for fallback
-    }
-
     async function iTunesSearch(term) {
       const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=10`;
       const r = await fetch(url);
@@ -5635,12 +5576,7 @@ async function _itunesLookupWithCandidates(query, artistHint = '') {
       results = await iTunesSearch(parsedTitle);
     }
 
-    // Strategy 3: try with global artist hint if different from parsed
-    if (!results.length && globalHint && globalHint !== parsedArtist) {
-      results = await iTunesSearch(`${parsedTitle} ${globalHint}`);
-    }
-
-    // Strategy 4: full original string as final fallback
+    // Strategy 3: full original string as fallback
     if (!results.length && parsedArtist) {
       results = await iTunesSearch(clean);
     }
