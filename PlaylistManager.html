@@ -5419,11 +5419,6 @@ function _filterOCRLines(rawText) {
 }
 
 function renderImgTextResults(rawText) {
-  // Un-hide result wrapper in case it was cleared
-  ['img-text-result','img-ocr-result'].forEach(function(id){
-    var el = document.getElementById(id);
-    if (el) { el.style.display = ''; delete el._clearedByReset; }
-  });
   // ── Apply OCR filter ──────────────────────────────────────────────────────
   const _ocrFiltered  = _filterOCRLines(rawText);
   const _filteredText = _ocrFiltered.lines.join('\n');
@@ -5447,6 +5442,7 @@ function renderImgTextResults(rawText) {
   const detectedArtist = _detectArtistFromOCR(rawText);
 
   const wrap = document.getElementById('img-text-results');
+  if (wrap) wrap.style.display = '';  // always show on scan
   if (wrap) wrap.style.display = '';  // always show on scan
   document.getElementById('img-text-result-count').textContent =
     `${lines.length} lines found — verifying with iTunes…`;
