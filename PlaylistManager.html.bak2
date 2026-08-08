@@ -5424,76 +5424,32 @@ async function verifyOCRLines() {
 // ── NEW: iTunes lookup that always returns candidates (even below match threshold) ──
 async function _itunesLookupWithCandidates(query, artistHint = '') {
   try {
-    // Strip leading track number  e.g. "1. " / "22. " / "3) "
     const clean = query.replace(/^[\d]+[\.\):\-]?\s*/, '').trim();
     if (!clean) return { best: null, candidates: [] };
-
-    // Auto-detect "TITLE - ARTIST" or "TITLE – ARTIST" format in the OCR line
-    const dashMatch = clean.match(/^(.+?)\s+[-–]\s+(.+)$/);
-    let parsedTitle  = clean;
-    let parsedArtist = artistHint;
-
-    if (dashMatch) {
-      parsedTitle  = dashMatch[1].trim();
-      parsedArtist = dashMatch[2].trim();
+    const searchTerm = artistHint ? `${clean} ${artistHint}` : clean;
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&media=music&entity=song&limit=5`;
+    const r = await fetch(url);
+    const data = await r.json();
+    let results = data.results || [];
+    if (!results.length && artistHint) {
+      const r2 = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(clean)}&media=music&entity=song&limit=5`);
+      const d2 = await r2.json();
+      results = d2.results || [];
     }
-
-    // ── Multi-strategy search ─────────────────────────────────────────────
-    async function iTunesSearch(term) {
-      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=10`;
-      const r = await fetch(url);
-      const d = await r.json();
-      return d.results || [];
-    }
-
-    let results = [];
-
-    // Strategy 1: title + detected/hinted artist (most specific)
-    if (parsedArtist) {
-      results = await iTunesSearch(`${parsedTitle} ${parsedArtist}`);
-    }
-
-    // Strategy 2: title alone if strategy 1 gave nothing
-    if (!results.length) {
-      results = await iTunesSearch(parsedTitle);
-    }
-
-    // Strategy 3: full original string as fallback
-    if (!results.length && parsedArtist) {
-      results = await iTunesSearch(clean);
-    }
-
     if (!results.length) return { best: null, candidates: [] };
-
-    // ── Score each result ─────────────────────────────────────────────────
     const scored = results.map(t => {
-      const titleSim  = _strSim(_normStr(parsedTitle),  _normStr(t.trackName  || ''));
-      const artistSim = parsedArtist
-        ? _strSim(_normStr(parsedArtist), _normStr(t.artistName || ''))
-        : 0;
-      // Weighted: title is primary signal, artist is strong secondary
-      const score = titleSim * 0.6 + artistSim * 0.4;
-      return { t, score, titleSim, artistSim };
+      const titleSim  = _strSim(clean, t.trackName);
+      const artistSim = artistHint ? _strSim(artistHint, t.artistName) * 0.3 : 0;
+      return { t, score: titleSim + artistSim, titleSim };
     }).sort((a, b) => b.score - a.score);
-
     const top = scored[0];
-    // Accept best if title similarity is reasonable OR both title+artist are decent
-    const isGoodMatch = top.titleSim >= 0.35 || (top.titleSim >= 0.25 && top.artistSim >= 0.5);
-    const best = isGoodMatch
-      ? { title: top.t.trackName, artist: top.t.artistName, album: top.t.collectionName || '' }
-      : null;
-
+    const best = top.titleSim >= 0.3 ? { title: top.t.trackName, artist: top.t.artistName, album: top.t.collectionName || '' } : null;
     const candidates = scored.slice(0, 3).map(s => ({
-      title:  s.t.trackName,
-      artist: s.t.artistName,
-      album:  s.t.collectionName || '',
-      pct:    Math.round(s.score * 100),
+      title: s.t.trackName, artist: s.t.artistName, album: s.t.collectionName || '',
+      pct: Math.round((s.titleSim + (artistHint ? _strSim(artistHint, s.t.artistName) * 0.3 : 0)) * 100),
     }));
-
     return { best, candidates };
-  } catch(e) {
-    return { best: null, candidates: [] };
-  }
+  } catch(e) { return { best: null, candidates: [] }; }
 }
 
 // ── Renders corrections + needs-review panel below textarea ──────────────────
