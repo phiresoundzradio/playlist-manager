@@ -1,0 +1,18 @@
+{
+  "name": "playlist-server",
+  "version": "1.0.0",
+  "description": "Local music library server for Playlist Manager — scans QNAP/NAS and serves suggestions",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "music-metadata": "^10.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

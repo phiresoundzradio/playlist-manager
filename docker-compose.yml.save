@@ -1,0 +1,31 @@
+services:
+  playlist-server:
+    build: .
+    container_name: playlist-server
+    ports:
+      - "3000:3000"
+    volumes:
+      # ── QNAP share mounted read-only ────────────────────────────────────────
+      # Change the left side to wherever your QNAP share is mounted on this VM.
+      # e.g. if you mounted it at /mnt/qnap via /etc/fstab, leave it as-is.
+      - /mnt/qnap:/mnt/qnap:ro
+      # ── Persistent data (library index + synced playlists) ──────────────────
+      - playlist-data:/data
+    environment:
+      - PORT=3000
+      # Path *inside* the container to your music (matches the volume above)
+      - MUSIC_DIR=/mnt/qnap
+      - DATA_DIR=/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+^X
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  playlist-data:
+`
+
+
