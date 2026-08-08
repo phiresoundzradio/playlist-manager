@@ -5118,32 +5118,6 @@ function clearImgPreview(mode) {
     _imgAlbumTracks = [];
     _selectedAlbum = null;
   }
-
-  // ── Extra reset when mode is 'text' ──────────────────────────────────────
-  if (mode === 'text') {
-    // Reset state arrays
-    _verifyResults = [];
-    _imgTextTracks = [];
-
-    // Hide results panel so drop zone is shown cleanly
-    const _wrap = document.getElementById('img-text-results');
-    if (_wrap) _wrap.style.display = 'none';
-
-    // Clear result content
-    const _cnt = document.getElementById('img-text-result-count');
-    if (_cnt) _cnt.textContent = '';
-    const _list = document.getElementById('img-text-result-list');
-    if (_list) _list.innerHTML = '';
-
-    // Remove suggestion/filter panels
-    ['verify-corrections-summary','ocr-filter-badge'].forEach(function(id){
-      var el = document.getElementById(id); if(el) el.remove();
-    });
-
-    // Show drop zone
-    const _dz = document.getElementById('img-drop-text');
-    if (_dz) _dz.style.display = '';
-  }
 }
 
 // ── Setlist-specific text parser (more flexible than Apple format) ─────────────
@@ -5468,14 +5442,6 @@ function renderImgTextResults(rawText) {
   const detectedArtist = _detectArtistFromOCR(rawText);
 
   const wrap = document.getElementById('img-text-results');
-  if (wrap) wrap.style.display = '';  // show results
-  // Hide image preview now that scan is done — keeps UI clean
-  const _prev = document.getElementById('img-preview-text');
-  if (_prev) _prev.style.display = 'none';
-  // Also hide the drop zone
-  const _dz = document.getElementById('img-drop-text');
-  if (_dz) _dz.style.display = 'none';
-
   if (wrap) wrap.style.display = '';  // always show on scan
   if (wrap) wrap.style.display = '';  // always show on scan
   document.getElementById('img-text-result-count').textContent =
@@ -5531,13 +5497,17 @@ function clearImageScan() {
   _imgTextTracks = [];
   if (typeof _imgAlbumTracks !== 'undefined') _imgAlbumTracks = [];
 
+  // Clear textarea
+  const ta = document.getElementById('img-ocr-edit');
+  if (ta) ta.value = '';
+
   // Remove suggestion/filter panels
   ['verify-corrections-summary', 'ocr-filter-badge'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.remove();
   });
 
-  // Clear result content
+  // Reset result count + track list
   const cnt = document.getElementById('img-text-result-count');
   if (cnt) cnt.textContent = '';
   const list = document.getElementById('img-text-result-list');
@@ -5547,32 +5517,17 @@ function clearImageScan() {
   const status = document.getElementById('itunes-verify-status');
   if (status) { status.textContent = ''; status.style.display = 'none'; }
   const btn = document.getElementById('itunes-verify-btn');
-  if (btn) { btn.disabled = false; btn.textContent = 'Verify Song Names'; }
+  if (btn) { btn.disabled = false; btn.textContent = 'Verify via iTunes'; }
 
-  // ── UI: hide results + preview, show drop zone ───────────────────────────
+  // Hide the result wrapper (CORRECT ID: img-text-results)
   const wrap = document.getElementById('img-text-results');
   if (wrap) wrap.style.display = 'none';
-
-  const preview = document.getElementById('img-preview-text');
-  if (preview) preview.style.display = 'none';
-
-  // Show the drop zone so the user can load a new image
-  const dropZone = document.getElementById('img-drop-text');
-  if (dropZone) dropZone.style.display = '';
-
-  // Clear the file input so the same file can be re-selected
-  const fileIn = document.getElementById('img-file-text');
-  if (fileIn) fileIn.value = '';
-
-  // Also clear the preview image src
-  const prevImg = document.getElementById('img-preview-img-text');
-  if (prevImg) prevImg.src = '';
 
   // Clear artist hint
   const hint = document.getElementById('img-artist-hint');
   if (hint) hint.value = '';
 
-  toast('Cleared — drop a new image or click to browse', 'success');
+  toast('Cleared — drop a new image or click Scan', 'success');
 }
 
 async function verifyOCRLines() {
