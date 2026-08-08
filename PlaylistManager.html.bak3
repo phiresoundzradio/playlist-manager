@@ -5322,105 +5322,7 @@ function _detectArtistFromOCR(rawText) {
   return '';
 }
 
-
-// ── OCR line filter: strips noise, extracts numbered tracklists ──────────────
-function _filterOCRLines(rawText) {
-  const NUMBERED = /^(\d{1,2})\s*[\.\)\:\-]\s*(.+)/;
-
-  // Noise patterns: catalog codes, label text, addresses, copyright, etc.
-  const NOISE = [
-    /^\s*$/,                                          // blank
-    /^.{1,4}$/,                                       // too short (< 5 chars)
-    /^[\d\s\.\-\|]+$/,                                // pure numbers/punctuation
-    /\b(Ltd|Plc|Inc|LLC|GmbH|Corp)\b/i,              // company suffixes
-    /\b(Records|Music Group|Entertainment|Publishing)\b/i,
-    /\b(Street|Avenue|Road|Lane|SW\d|SE\d|NW\d|NE\d|High Street)\b/i,
-    /\b(London|Dublin|Eire|Barnes|Distributed|Distribution)\b/i,
-    /\(p\)\s*\d{4}|\(c\)\s*\d{4}|©\s*\d{4}/i,       // copyright year
-    /\bBMG\b|\bSony\b|\bEMI\b|\bWarner\b|\bUniversal\b/i,
-    /Made in|Manufactured|Printed in|All rights/i,
-    /Design\s*[-–:]/i,                                // "Design - spin"
-    /^(TCD|STAC|CAT|REF|LC|UPC|EAN|ISRC)\s*\d/i,    // catalog IDs
-    /^\d{10,}$/,                                      // barcode numbers
-    /^[A-Z]{2,6}\s+\d{3,}$/,                         // "TCD 2695" style
-    /Also available|See also|Visit us|www\.|http/i,
-    /This compilation|This album|All tracks/i,
-    /Telstar|Chrysalis|Parlophone|Island|Atlantic|Columbia|Elektra/i,
-    /Prospect Studios/i,
-  ];
-
-  const isNoise = line => NOISE.some(p => p.test(line));
-
-  const raw = rawText.split('\n').map(l => l.trim());
-
-  // ── Strategy 1: numbered tracklist ────────────────────────────────────────
-  // Collect ALL lines that look like "1. Song - Artist"
-  const numbered = [];
-  for (const line of raw) {
-    const m = line.match(NUMBERED);
-    if (m) {
-      const trackNum  = parseInt(m[1], 10);
-      const trackText = m[2].trim();
-      if (trackText.length > 3 && !isNoise(trackText)) {
-        numbered.push({ num: trackNum, text: trackText });
-      }
-    }
-  }
-
-  // If we found 5+ numbered entries, trust it as a tracklist
-  if (numbered.length >= 5) {
-    // Sort by track number, deduplicate
-    const seen = new Set();
-    const deduped = numbered
-      .sort((a, b) => a.num - b.num)
-      .filter(({ text }) => {
-        const key = text.toLowerCase().replace(/\s+/g, ' ');
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    return {
-      lines:    deduped.map(t => t.text),
-      strategy: 'numbered',
-      removed:  raw.length - deduped.length,
-    };
-  }
-
-  // ── Strategy 2: heuristic noise filter ───────────────────────────────────
-  // Keep lines that look like songs: has a dash separator OR reasonable length
-  const SONG_LIKE = /\s[-–]\s/;   // "TITLE - ARTIST" or "TITLE – ARTIST"
-
-  const filtered = raw.filter(line => {
-    if (!line || line.length < 5) return false;
-    if (isNoise(line)) return false;
-    return true;
-  });
-
-  // If many lines have dash-separator pattern, further filter to only those
-  const dashLines = filtered.filter(l => SONG_LIKE.test(l));
-  if (dashLines.length >= 5 && dashLines.length >= filtered.length * 0.4) {
-    return {
-      lines:    dashLines,
-      strategy: 'dash-separator',
-      removed:  raw.length - dashLines.length,
-    };
-  }
-
-  return {
-    lines:    filtered,
-    strategy: 'noise-filter',
-    removed:  raw.length - filtered.length,
-  };
-}
-
 function renderImgTextResults(rawText) {
-  // ── Apply OCR filter ──────────────────────────────────────────────────────
-  const _ocrFiltered  = _filterOCRLines(rawText);
-  const _filteredText = _ocrFiltered.lines.join('\n');
-  const _removedCount = _ocrFiltered.removed;
-  const _strategy     = _ocrFiltered.strategy;
-  rawText = _filteredText;   // swap in cleaned text for rest of function
-
   const lines = rawText.split(/\r?\n/)
     .map(l => l.trim()
       .replace(/^\d+\s*[\.\):\-]\s*/, '')  // strip "1. " or "1) " or "1 . "
@@ -5439,26 +5341,6 @@ function renderImgTextResults(rawText) {
   const wrap = document.getElementById('img-text-results');
   document.getElementById('img-text-result-count').textContent =
     `${lines.length} lines found — verifying with iTunes…`;
-  // Show filter summary
-  (function(){
-    let badge = document.getElementById('ocr-filter-badge');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.id = 'ocr-filter-badge';
-      badge.style.cssText = 'font-size:11px;color:var(--muted);margin-top:4px;';
-      const cnt = document.getElementById('img-text-result-count');
-      if (cnt && cnt.parentNode) cnt.parentNode.insertBefore(badge, cnt.nextSibling);
-    }
-    if (_removedCount > 0) {
-      const strat = _strategy === 'numbered' ? 'numbered-list mode'
-                   : _strategy === 'dash-separator' ? 'title–artist mode'
-                   : 'noise filter';
-      badge.textContent = `🧹 ${_removedCount} non-track lines removed (${strat})`;
-      badge.style.display = '';
-    } else {
-      badge.style.display = 'none';
-    }
-  })();
 
   document.getElementById('img-text-result-list').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
