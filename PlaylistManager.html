@@ -5274,8 +5274,35 @@ async function runImageOCR(mode) {
   }
 }
 
+// ── Detect artist from OCR header text ────────────────────────────────────────
+function _detectArtistFromOCR(rawText) {
+  const STOP = new Set(['top','throwback','best','songs','song','playlist','hits','greatest',
+    'legends','legend','love','one','all','time','the','a','an','and','or','of','in','on',
+    'at','to','feat','featuring','ft','vs','presents','music','ultimate','official',
+    'collection','remix','edition','deluxe','acoustic','live','vol','volume','pt','part',
+    'tracks','track','list','100','50','25','ten','hundred','fifty','classic','classics',
+    'throwbacks','bangers','banger','vibes','mix','tape','mixtape','album','ep','lp',
+    'ovo','sound','radio','session','sessions','sound']);
+
+  const firstLines = rawText.split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l.length > 2)
+    .slice(0, 4);
+
+  for (const line of firstLines) {
+    if (/^\d+[\.\)]/.test(line)) continue; // skip numbered song lines
+    const words = line.split(/[\s\.\-_\/|]+/)
+      .map(w => w.replace(/[^a-zA-Z']/g, '').trim())
+      .filter(w => w.length > 1 && !STOP.has(w.toLowerCase()));
+    if (words.length >= 1 && words.length <= 4) {
+      // Title-case the result
+      return words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    }
+  }
+  return '';
+}
+
 function renderImgTextResults(rawText) {
-  // Strip noise lines but keep everything else — user can edit
   const lines = rawText.split(/\r?\n/)
     .map(l => l.trim()
       .replace(/^\d+\s*[\.\):\-]\s*/, '')  // strip "1. " or "1) " or "1 . "
@@ -5284,25 +5311,33 @@ function renderImgTextResults(rawText) {
     )
     .filter(l => {
       if (l.length < 2) return false;
-      if (/^\d+$/.test(l)) return false;           // pure numbers
-      if (/^\d{1,2}:\d{2}$/.test(l)) return false; // timestamps
+      if (/^\d+$/.test(l)) return false;
+      if (/^\d{1,2}:\d{2}$/.test(l)) return false;
       return true;
     });
 
+  const detectedArtist = _detectArtistFromOCR(rawText);
+
   const wrap = document.getElementById('img-text-results');
   document.getElementById('img-text-result-count').textContent =
-    `${lines.length} lines found — edit below then click Add to Playlist`;
+    `${lines.length} lines found — verifying with iTunes…`;
 
-  // Replace the fixed list with an editable textarea
   document.getElementById('img-text-result-list').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <label style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">Artist (helps accuracy):</label>
+      <input id="img-artist-hint" type="text" value="${esc(detectedArtist)}"
+        placeholder="e.g. Drake, Kendrick Lamar"
+        style="flex:1;background:var(--surface3);color:var(--text);border:1px solid var(--border);
+               border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit;" />
+    </div>
     <textarea id="img-ocr-edit"
-      style="width:100%;height:260px;background:var(--surface3);color:var(--text);
+      style="width:100%;height:240px;background:var(--surface3);color:var(--text);
              border:1px solid var(--border);border-radius:8px;padding:10px;
              font-size:13px;line-height:1.7;resize:vertical;font-family:inherit;"
       spellcheck="false"
     >${lines.join('\n')}</textarea>
-    <div style="font-size:11px;color:var(--muted);margin-top:6px">
-      One song per line. Edit or delete any lines before importing.
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">
+      One song per line. Edit before importing. Artist field improves iTunes matching.
     </div>`;
 
   wrap.style.display = '';
@@ -5321,6 +5356,7 @@ async function verifyOCRLines() {
   btn.textContent = '⏳ Verifying…';
   status.style.display = '';
 
+  const artistHint = (document.getElementById('img-artist-hint')?.value || '').trim();
   const corrected = [];
   const changes   = []; // {original, fixed}
   const BATCH = 5;
@@ -5328,7 +5364,7 @@ async function verifyOCRLines() {
 
   for (let i = 0; i < lines.length; i += BATCH) {
     const batch = lines.slice(i, i + BATCH);
-    const results = await Promise.all(batch.map(line => _itunesLookup(line)));
+    const results = await Promise.all(batch.map(line => _itunesLookup(line, artistHint)));
 
     results.forEach((hit, j) => {
       const original = batch[j];
@@ -5381,26 +5417,36 @@ async function verifyOCRLines() {
   toast(`${fixed} song names corrected`, fixed ? 'success' : 'info');
 }
 
-async function _itunesLookup(query) {
+async function _itunesLookup(query, artistHint = '') {
   try {
-    // Strip leading numbers/bullets first
     const clean = query.replace(/^[\d]+[\.\):\-]?\s*/, '').trim();
-    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(clean)}&media=music&entity=song&limit=3`;
+    if (!clean) return null;
+
+    // Search with artist hint for better accuracy, then fall back without if no results
+    const searchTerm = artistHint ? `${clean} ${artistHint}` : clean;
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&media=music&entity=song&limit=5`;
     const r = await fetch(url);
     const data = await r.json();
-    const results = data.results || [];
+    let results = data.results || [];
+
+    // If artist-scoped search found nothing, retry without artist
+    if (!results.length && artistHint) {
+      const r2 = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(clean)}&media=music&entity=song&limit=5`);
+      const d2 = await r2.json();
+      results = d2.results || [];
+    }
     if (!results.length) return null;
 
-    // Pick the result with highest title similarity to our OCR line
+    // Score: title match is primary, artist match is secondary bonus
     let best = null, bestSim = 0;
     for (const t of results) {
-      const sim = _strSim(clean, t.trackName + ' ' + t.artistName);
-      const titleSim = _strSim(clean, t.trackName);
-      const score = Math.max(sim, titleSim * 0.9);
+      const titleSim  = _strSim(clean, t.trackName);
+      const artistSim = artistHint ? _strSim(artistHint, t.artistName) * 0.3 : 0;
+      const score = titleSim + artistSim;
       if (score > bestSim) { bestSim = score; best = t; }
     }
-    // Only accept if reasonably confident
-    return bestSim >= 0.35 ? best : null;
+    // Require a reasonable title match regardless of artist boost
+    return _strSim(clean, best?.trackName || '') >= 0.3 ? best : null;
   } catch(e) {
     return null;
   }
